@@ -3,14 +3,14 @@ mod mini_fs;
 mod disk_fs;
 mod net_disk_fs;
 mod snapshot_manager;
+mod rest_api_run;
 
 use std::sync::{Arc, RwLock};
 use std::path::PathBuf;
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{web, HttpResponse};
 use filesystem::FileSystem;
 use snapshot_manager::SnapshotManager;
 
-// Select backend by parameter
 fn select_fs(backend: &str) -> Arc<RwLock<Box<dyn FileSystem>>> {
     match backend {
         "disk" => Arc::new(RwLock::new(Box::new(disk_fs::DiskFS::new(PathBuf::from("./data"))))),
@@ -83,14 +83,10 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    HttpServer::new(move || {
-        App::new()
-            .route("/file/{name}", web::put().to(upsert_file.clone()))
-            .route("/file/{name}", web::get().to(get_file.clone()))
-            .route("/snapshot", web::post().to(create_snapshot.clone()))
-            .route("/snapshot/{id}/restore", web::post().to(restore_snapshot.clone()))
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+    rest_api_run::run_rest_api(
+        upsert_file,
+        get_file,
+        create_snapshot,
+        restore_snapshot,
+    ).await
 }

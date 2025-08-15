@@ -29,6 +29,29 @@
    - 创建快照: `POST /snapshot`
    - 恢复快照: `POST /snapshot/{id}/restore`
 
+## 系统启动命令说明
+
+项目启动时需指定文件系统后端类型（内存、磁盘或网络），通过环境变量 `FS_BACKEND` 控制，具体命令如下：
+
+```bash
+# 启动内存后端（默认，适合快速测试和开发）
+FS_BACKEND=memory cargo run
+
+# 启动磁盘后端（持久化数据到本地目录）
+FS_BACKEND=disk cargo run
+
+# 启动网络磁盘后端（如有实现，便于远程扩展）
+FS_BACKEND=netdisk cargo run
+```
+
+如需在生产环境编译并运行 release 版本，可使用：
+
+```bash
+FS_BACKEND=memory cargo run --release
+```
+
+如果未指定 `FS_BACKEND`，系统将默认采用内存后端。
+
 ## 目录结构
 
 - `src/filesystem.rs`   —— 文件系统操作 trait 抽象

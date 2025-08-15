@@ -11,6 +11,7 @@ use actix_web::{web, HttpResponse};
 use filesystem::FileSystem;
 use snapshot_manager::SnapshotManager;
 
+// 每次请求都可调用，选择后端
 fn select_fs(backend: &str) -> Arc<RwLock<Box<dyn FileSystem>>> {
     match backend {
         "disk" => Arc::new(RwLock::new(Box::new(disk_fs::DiskFS::new(PathBuf::from("./data"))))),
@@ -19,16 +20,20 @@ fn select_fs(backend: &str) -> Arc<RwLock<Box<dyn FileSystem>>> {
     }
 }
 
+// handler里通过Query参数获取backend
+fn get_backend(query: &web::Query<std::collections::HashMap<String, String>>) -> &str {
+    query.get("backend").map(|s| s.as_str()).unwrap_or("memory")
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let backend = std::env::var("FS_BACKEND").unwrap_or_else(|_| "memory".to_string());
-    let fs = select_fs(&backend);
     let snapshots = Arc::new(RwLock::new(SnapshotManager::new()));
 
+    // upsert_file
     let upsert_file = {
-        let fs = fs.clone();
-        move |path: web::Path<String>, body: String| {
-            let fs = fs.clone();
+        move |path: web::Path<String>, body: String, query: web::Query<std::collections::HashMap<String, String>>| {
+            let backend = get_backend(&query);
+            let fs = select_fs(backend);
             async move {
                 fs.write().unwrap().upsert_file(path.into_inner(), body);
                 HttpResponse::Ok().body("File updated")
@@ -36,10 +41,11 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // get_file
     let get_file = {
-        let fs = fs.clone();
-        move |path: web::Path<String>| {
-            let fs = fs.clone();
+        move |path: web::Path<String>, query: web::Query<std::collections::HashMap<String, String>>| {
+            let backend = get_backend(&query);
+            let fs = select_fs(backend);
             async move {
                 match fs.read().unwrap().get_file(&path.into_inner()) {
                     Some(content) => HttpResponse::Ok().body(content.to_string()),
@@ -49,11 +55,12 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // create_snapshot
     let create_snapshot = {
-        let fs = fs.clone();
         let snapshots = snapshots.clone();
-        move || {
-            let fs = fs.clone();
+        move |query: web::Query<std::collections::HashMap<String, String>>| {
+            let backend = get_backend(&query);
+            let fs = select_fs(backend);
             let snapshots = snapshots.clone();
             async move {
                 let files = fs.read().unwrap().clone_files();
@@ -64,11 +71,12 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // restore_snapshot
     let restore_snapshot = {
-        let fs = fs.clone();
         let snapshots = snapshots.clone();
-        move |path: web::Path<String>| {
-            let fs = fs.clone();
+        move |path: web::Path<String>, query: web::Query<std::collections::HashMap<String, String>>| {
+            let backend = get_backend(&query);
+            let fs = select_fs(backend);
             let snapshots = snapshots.clone();
             async move {
                 let snap_id = path.into_inner();
